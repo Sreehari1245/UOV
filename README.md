@@ -36,7 +36,7 @@ Usage
 Run the program
 
 1. Open your Magma environment or use [Magma Calculator](http://magma.maths.usyd.edu.au/calc/).
-2. Copy and paste the full code from `uov_signature.m`.
+2. Copy and paste the full code from `UOV_EntireCode.rtf`.
 3. Execution will:
    - Generate secret/public key components
    - Sign a hardcoded message `"0"`
