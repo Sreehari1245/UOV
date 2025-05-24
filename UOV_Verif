@@ -1,0 +1,47 @@
+// Load the key generation algorithm or input the public key here
+load "UOV_Keygen.m";
+
+// Input the secret and public parameters
+
+n := 10;
+m := 4;
+l := n-m;
+
+seed_pk := 1; // Input the value of 128-bit seed_pk here
+PublicKeysP1, PublicKeysP2 := PubGen(seed_pk);
+
+// Input PublicKeysP3
+PublicKeysP3 := "You have enter the l*l P3[i] Matrices over F16 for i in [1,m]";
+
+s, salt := "Input the signature tuple";
+
+
+// Signature Verification
+function SigVrfy(P1, P2, P3, mu, s, salt)
+    binary_salt := IntegerToString(salt, 2);
+    binarySeed_t := binary_salt cat mu;
+    seed_t := BinaryToInteger(binarySeed_t);
+    t := VectorOverF16(seed_t, m);
+
+    for i in [1..m] do
+        // Reconstruct full matrix P_i from public parts
+        P := HorizontalJoin(VerticalJoin(P1[i], ZeroMatrix(F16, m, n - m)),VerticalJoin(P2[i], P3[i]));
+
+        // Check if quadratic form s^T * P * s matches t[i]
+        if t[i][1] ne (Transpose(s) * P * s)[1][1] then 
+            return false;
+        end if;
+    end for;
+    return true; // All checks passed
+end function;
+
+// Run signature generation and verification
+
+mu := "0";
+s, salt := Sig_gen(O, S, PublicKeysP1, PublicKeysP2, PublicKeysP3, mu);
+
+if SigVrfy(PublicKeysP1, PublicKeysP2, PublicKeysP3, mu, s, salt) then
+    "Signature is Valid";
+else
+    "Signature is Invalid";
+end if;
