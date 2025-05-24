@@ -1,1 +1,101 @@
+// Reference: NIST UOV submission specification
+// https://csrc.nist.gov/csrc/media/Projects/pqc-dig-sig/documents/round-1/spec-files/UOV-spec-web.pdf
 
+// This Magma implementation uses built-in random generators for simplicity,
+// allowing easy verification using the online Magma calculator.
+// In practice, a cryptographic hash (i.e. SHA-256 as in spec) should be used for randomness.
+
+// Define the finite field F16 = GF(2^4) with irreducible polynomial x^4 + x + 1
+F16 := ExtensionField<GF(2), x | x^4 + x + 1>;
+
+// UOV Parameters
+n := 10;  // Total number of variables (oil + vinegar)
+m := 4;   // Number of oil variables
+l := n - m; // Number of vinegar variables
+
+// Generate random seeds for secret and public key (128-bit) 
+seed_sk := Random(2^3, 2^4 - 1);  // Secret seed: This should be 128-bit while implementation
+seed_pk := Random(2^3, 2^4 - 1);  // Public seed: This should be 128-bit while implementation
+
+// Convert integer seeds to binary strings 
+binarySeed_sk := IntegerToString(seed_sk, 2);
+binarySeed_pk := IntegerToString(seed_pk, 2);
+
+
+// Convert binary string to integer
+function BinaryToInteger(binary_string)
+    result := 0;
+    bits := [StringToInteger(c) : c in Eltseq(binary_string)];
+    for i in [1..#bits] do
+        result +:= bits[i] * 2^(#bits - i);
+    end for;
+    return result;
+end function;
+
+// Generate a deterministic random binary string of a fixed length from a seed
+function RandNum(seed, output_length)
+    SetSeed(seed);
+    num := Random(2^(output_length - 1), 2^output_length - 1);
+    binary_string := IntegerToString(num, 2);
+    padding := output_length - #binary_string;
+    if padding gt 0 then
+        binary_string := &cat["0" : i in [1..padding]] cat binary_string;
+    end if;
+    return binary_string;
+end function;
+
+// Generate matrix over F16 using a seed 
+function MatrixOverF16(seed, a, b)
+    output_length := 4 * a * b; // Each F16 element needs 4 bits
+    binary_string := RandNum(seed, output_length);
+    values := [];
+    index := 1;
+    for i in [1..a] do
+        for j in [1..b] do
+            value_bits := binary_string[index..index + 3]; // 4-bit chunks
+            index +:= 4;
+            element := BinaryToInteger(value_bits) mod 15; // Map to F16 element 
+            Append(~values, F16.1^element);
+        end for;
+    end for;
+    return Matrix(F16, a, b, values);
+end function;
+
+// Generate column vector over F16
+function VectorOverF16(seed, a)
+    return MatrixOverF16(seed, a, 1);
+end function;
+
+// Generate secret oil matrix O (maps oil vars to full vector space) 
+O := MatrixOverF16(seed_sk, n - m, m);
+
+// Generate public key matrices P1_i and P2_i for i in 1..m 
+function PubGen(seed)
+    P1_Matrices := [];
+    P2_Matrices := [];
+    for i in [1..m] do
+        SetSeed(seed + i); // Derive sub-seed for each polynomial
+        P12 := MatrixOverF16(seed + i, n - m, n); // Full row of coefficients
+        Append(~P1_Matrices, Submatrix(P12, 1, 1, n - m, n - m));     // Left block (P1_i)
+        Append(~P2_Matrices, Submatrix(P12, 1, n - m + 1, n - m, m)); // Right block (P2_i)
+    end for;
+    return P1_Matrices, P2_Matrices;
+end function;
+
+// Generate public key matrices P1 and P2 
+PublicKeysP1, PublicKeysP2 := PubGen(seed_sk);
+
+// Compute P3_i = -(O^T * P1_i * O) - (O^T * P2_i) for each i 
+PublicKeysP3 := [];
+for i in [1..m] do
+    term1 := Transpose(O) * PublicKeysP1[i] * O;
+    term2 := Transpose(O) * PublicKeysP2[i];
+    Append(~PublicKeysP3, -term1 - term2);
+end for;
+
+// Output seeds for reference
+print "128-bit secret binary seed:", binarySeed_sk;
+print "128-bit public binary seed:", binarySeed_pk;
+
+// Return the public keys
+PublicKeysP1,PublicKeysP2,PublicKeysP3;
