@@ -1,0 +1,80 @@
+// Load the key generation algorithm or input the public key here
+load "UOV_Keygen.m";
+
+// Input the secret and public parameters
+
+n := 10;
+m := 4;
+l := n-m;
+
+seed_sk := 0; // Input the value of 128-bit seed_sk here
+binarySeed_sk := IntegerToString(seed_sk, 2);
+seed_pk := 1; // Input the value of 128-bit seed_pk here
+O := MatrixOverF16(seed_sk, n - m, m);
+PublicKeysP1, PublicKeysP2 := PubGen(seed_pk);
+
+// Compute P3_i = -(O^T * P1_i * O) - (O^T * P2_i) for each i 
+PublicKeysP3 := [];
+for i in [1..m] do
+    term1 := Transpose(O) * PublicKeysP1[i] * O;
+    term2 := Transpose(O) * PublicKeysP2[i];
+    Append(~PublicKeysP3, -term1 - term2);
+end for;
+
+// Precompute signature matrices S_i = (P1_i + P1_iᵀ) * O + P2_i
+S := [];
+for i in [1..m] do
+    Append(~S, (PublicKeysP1[i] + Transpose(PublicKeysP1[i])) * O + PublicKeysP2[i]);
+end for;
+
+// Signature Generation Algorithm 
+function Sig_gen(O, S, P1, P2, P3, mu)
+    salt := Random(2^3, 2^4 - 1); // Generate a new salt: This should be 128-bits
+    binary_salt := IntegerToString(salt, 2);
+    binarySeed_t := binary_salt cat mu; // Hash-like expansion
+    seed_t := BinaryToInteger(binarySeed_t);
+    
+    // Generate target vector t = H(mu || salt)
+    t := VectorOverF16(seed_t, m);
+
+    // Seed to generate vinegar part
+    binarySeed_v := binarySeed_t cat binarySeed_sk;
+    seed_v := BinaryToInteger(binarySeed_v);
+
+    for ctr in [1..255] do // Try up to 255 vinegar vectors. Reduces the risks of timing attacks
+        binaryseedv_ctr := binarySeed_v cat IntegerToString(ctr, 2);
+        seedv_ctr := BinaryToInteger(binaryseedv_ctr);
+        v := VectorOverF16(seedv_ctr, n - m); // Random vinegar vector
+
+        // Construct linear system L * x = t - y
+        L := ZeroMatrix(F16, m, m);
+        for i in [1..m] do
+            L[i] := (Transpose(v) * S[i])[1];
+        end for;
+
+        // Compute right-hand side y
+        y := ZeroMatrix(F16, m, 1);
+        if Determinant(L) ne 0 then
+            for i in [1..m] do
+                y[i][1] := (Transpose(v) * P1[i] * v)[1][1];
+            end for;
+
+            x := L^-1 * (t - y); // Solve for oil variables
+            s := ZeroMatrix(F16, n, 1);
+
+            // Combine v and x into signature vector s
+            for i in [1..n - m] do
+                s[i][1] := v[i][1] + (O * x)[i][1];
+            end for;
+            for i in [n - m + 1..n] do
+                s[i][1] := x[i - n + m][1];
+            end for;
+
+            return s, salt; // Return signature and salt
+        end if;
+    end for;
+    return "Failure"; // No valid signature found
+end function;
+
+mu := "0";
+s, salt := Sig_gen(O, S, PublicKeysP1, PublicKeysP2, PublicKeysP3, mu);
