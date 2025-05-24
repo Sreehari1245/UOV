@@ -83,7 +83,7 @@ function PubGen(seed)
 end function;
 
 // Generate public key matrices P1 and P2 
-PublicKeysP1, PublicKeysP2 := PubGen(seed_sk);
+PublicKeysP1, PublicKeysP2 := PubGen(seed_pk);
 
 // Compute P3_i = -(O^T * P1_i * O) - (O^T * P2_i) for each i 
 PublicKeysP3 := [];
